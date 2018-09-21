@@ -119,6 +119,18 @@ sub usage {
     print STDERR "\tExample: 'keys \%{\$anagram{\$word{\$_[0]}}}' gives a list of all anagrams of \$_[0].\n";
     print STDERR "\tMore complex statements are allowed.\n";
     print STDERR "\n";
+    print STDERR "Functions:\n";
+    print STDERR "\tThe following functions are available in code blocks:\n";
+    print STDERR "\n";
+    print STDERR "\tsorted_anagram(word): returns the normalized anagram of word.\n";
+    print STDERR "\tincreasing_order(word): returns true if all letters are in increasing order in word.\n";
+    print STDERR "\tdecreasing_order(word): returns true if all letters are in decreasing order in word.\n";
+    print STDERR "\tfront_rear(word): returns true if the front and back of a word use the same letters,\n";
+    print STDERR "\t\tnot necessarily in the same order, but skipping trivial cases like 'bongobongo'.\n";
+    print STDERR "\tcons_double(word): returns true if doubling an inner consonant is also a word.\n";
+    print STDERR "\tchar_shift(c1, c2, word): returns the list of words, where word has a char c1,\n";
+    print STDERR "\t\twhen changed to c2, is also a word.\n";
+    print STDERR "\n";
 
     exit;
 }
@@ -380,62 +392,14 @@ sub front_rear {
     return $result;
 }
 
-###############################
-# Connect a Perl data structure to a disk file.
-# If the file does not exist, it is created.
-# If it already exists, it is unchanged.
-sub cache_file_get {
-    my $cache_path = shift;
-    local $/; # file slurp
-    open(my $CACHE, '<', $cache_path)
-    or die "Can't open $cache_path for reading, $!";
-    my $json = <$CACHE>;
-    my $cache = JSON->new->decode($json);
-    return $cache;
-}
-
-###############################
-# Compare cache file last modified time to @ARGV files
-# Return true if any input files are newer than the reference file
-sub file_older_than {
-    my $ref_file = shift;
-    my @files = @_;
-
-    return 1 unless -e $ref_file;
-    my $ref_age = -M $ref_file;
-    for my $in (@files) {
-        if ((-e $in)
-        and (-M $in < $ref_age)) {
-            return 1;
-        }
-    }
-    return 0;
-}
-
-#########################
-# Find words where, with a middle consonant doubled, is also a word.
-# Ex: diner, dinner; rifle, riffle
-sub cons_double {
-    my $word = shift; 
-    my @word = split q(), $word; 
-    my $vowel = qr/[aeiouy]/i;
-    my $cons = qr/[bcdfghjklmnpqrstvwxyz]/i;
-    return unless length($word) > 2; 
-    # find every index where a vowel/consonant/vowel occurs
-    for my $i (0..($#word-3)) {
-        next unless $word =~ m/^(.{$i}${vowel}${cons}*)(${cons})(${vowel}.*)$/;
-        my $w = "$1$2$2$3"; 
-        return qq/$word, $w/ if exists($word{$w});
-    }
-}
 
 #################################
 # Find words where one letter has been systematically changed to another, and is also a word.
 # Ex: P to B: pollard, bollard
-sub charshift {
+sub char_shift {
     my $c1 = shift;
     my $c2 = shift;
-    my $w = shift; 
+    my $w = shift;
     for my $c ($c1, $c2) {
         die "($c) must be a single character\n" unless length($c) == 1;
     }
@@ -458,3 +422,141 @@ sub charshift {
     $results{$w} = 1 if exists($word{$w});
     return join(', ', sort keys %results);
 }
+
+#########################
+# Find words where, with a middle consonant doubled, is also a word.
+# Ex: diner, dinner; rifle, riffle
+sub cons_double {
+    my $word = shift;
+    my @word = split q(), $word;
+    my $vowel = qr/[aeiouy]/i;
+    my $cons = qr/[bcdfghjklmnpqrstvwxyz]/i;
+    return unless length($word) > 2;
+    # find every index where a vowel/consonant/vowel occurs
+    for my $i (0..($#word-3)) {
+        next unless $word =~ m/^(.{$i}${vowel}${cons}*)(${cons})(${vowel}.*)$/;
+        my $w = "$1$2$2$3";
+        return qq/$word, $w/ if exists($word{$w});
+    }
+}
+
+use Data::Dumper;
+###############################
+# Find words where removing one letter results in a valid word.
+# Wrapper/formatter for char_elide_x, which does the real work.
+sub char_elide {
+    my $word = shift; # the word of interest
+    my $min = (shift // 1); # must make a word down to this length
+
+    my $result = char_elide_x($word, $min);
+    return %{$result} ? sprintf "(%d) %s", count_leaves($result), string_hash_tree($result) : '';
+}
+
+###############################
+# Recurse for char_elide
+# Returns: hash ref
+sub char_elide_x {
+    my $word = shift; # the word of interest
+    my $min = (shift // 1); # must make a word down to this length
+    my $result = {}; # store results here
+
+    # If the minimum length has been met, make this a "good" result.
+    # Further words might be added below.
+    if (length($word) <= $min) {
+        $result->{$word} = {};
+    }
+
+    my @word = split '', $word;
+    for my $i (0..$#word) {
+        # make a new word, with 1 char removed
+        my $new_word = join('', @word[0..$i-1], @word[$i+1..$#word]);
+
+        if (exists($word{$new_word})) {
+            # recurse with the $new_word
+            my $catch = char_elide_x($new_word, $min);
+            if (%{$catch}) {
+                $result->{$word} = $catch;
+            }
+        }
+    }
+    return $result;
+}
+
+###############################
+# Compare cache file last modified time to @ARGV files
+# Return true if any input files are newer than the reference file
+sub file_older_than {
+    my $ref_file = shift;
+    my @files = @_;
+
+    return 1 unless -e $ref_file;
+    my $ref_age = -M $ref_file;
+    for my $in (@files) {
+        if ((-e $in)
+        and (-M $in < $ref_age)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+###############################
+# Connect a Perl data structure to a disk file.
+# If the file does not exist, it is created.
+# If it already exists, it is unchanged.
+sub cache_file_get {
+    my $cache_path = shift;
+    local $/; # file slurp
+    open(my $CACHE, '<', $cache_path)
+    or die "Can't open $cache_path for reading, $!";
+    my $json = <$CACHE>;
+    my $cache = JSON->new->decode($json);
+    return $cache;
+}
+
+###############################
+# Print a hash in a tree format
+sub string_hash_tree {
+   my ($tree, $depth) = @_;
+   $depth ||= 0;
+
+   my $string = '';
+   my $indent = '   ' x $depth;
+
+   for (sort keys %$tree) {
+      $string .= join('', $indent, /^\s*\z/ ? "<blank>" : $_, "\n");
+      $string .= string_hash_tree($tree->{$_}, $depth+1);
+   }
+   return $string;
+}
+
+###############################
+# Count leaf nodes of hash
+sub count_leaves {
+    my $tree = shift;
+
+    my $count = 0;
+
+    for my $k (keys %$tree) {
+        if ((ref($tree->{$k}) eq "SCALAR") or
+            (not scalar keys(%{$tree->{$k}}))) {
+            ++$count;
+        } else {
+            $count += count_leaves($tree->{$k});
+        }
+    }
+    return $count;
+}
+__END__
+
+# Interesting command lines:
+
+# Find words whose prefix and suffix are the same, and the interior anagrams to a known word:
+#
+#   -c 'if (($_[0] =~ m/^(.{3,})(.{3,})\1$/) and defined($1) and \
+#   (exists($anagram{sorted_anagram($2)}))){return join(",", \
+#   keys %{$anagram{sorted_anagram($2)}})}else{return}'
+#
+# Words that, when the p's are flipped to b's, are also words:
+#
+#   -c 'my $w = shift; my $x = $w; if (($x =~ s/p/b/gi) and exists($word{$x})) {return "$x"}'
