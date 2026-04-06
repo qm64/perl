@@ -327,7 +327,7 @@ sub report_options {
 sub time_stamp {
 	my @months = qw(Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec);
 	my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = localtime(time);
-	my $time_stamp = sprintf "%d %0d%s %0d, %0d:%0d:%0d",
+    my $time_stamp = "%d %02d%s %02d, %02d:%02d:%02d",
 		$year+1900, $mon+1, $months[$mon], $mday, $hour, $min, $sec;
 	return $time_stamp;
 }
