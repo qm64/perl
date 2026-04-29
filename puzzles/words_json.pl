@@ -10,7 +10,7 @@ use strict;
 use warnings;
 
 use File::Basename;
-use File::Spec qw(catfile);
+use File::Spec;
 use JSON;
 
 our ($FILENAME, $DIRS, $SUFFIX) = fileparse($0);
